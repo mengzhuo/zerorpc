@@ -97,7 +97,6 @@ func (s *Server) RegisterTask(name string, handlerFunc func(args []interface{}) 
 func (s *Server) handleTask(ev *Event) (interface{}, error) {
 
 	if h, ok := s.handlers[ev.Name]; ok {
-
 		log.Printf("ZeroRPC server handling task %s with args %s", ev.Name, ev.Args)
 		return h(ev.Args)
 	}

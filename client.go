@@ -3,6 +3,7 @@ package zerorpc
 import (
 	"fmt"
 	"log"
+	"reflect"
 )
 
 // ZeroRPC client representation,
@@ -76,7 +77,7 @@ and the args of the returned event are the exception description and traceback.
 The client sends heartbeat events every 5 seconds, if twp heartbeat events are missed,
 the remote is considered as lost and an ErrLostRemote is returned.
 */
-func (c *Client) Invoke(name string, args ...interface{}) (*Event, error) {
+func (c *Client) Invoke(name string, args ...interface{}) ([]interface{}, error) {
 	log.Printf("ZeroRPC client invoked %s with args %s", name, args)
 
 	ev, err := newEvent(name, args)
@@ -96,15 +97,53 @@ func (c *Client) Invoke(name string, args ...interface{}) (*Event, error) {
 		select {
 		case response := <-ch.channelOutput:
 			if response.Name == "ERR" {
-				return response, fmt.Errorf("%s", response.Args)
+				return response.Args, fmt.Errorf("%s", response.Args)
 			} else {
-				return response, nil
+				return response.Args, nil
 			}
 
 		case err := <-ch.channelErrors:
 			return nil, err
 		}
 	}
+}
+
+func (c *Client) InvokeReply(name string, reply interface{}, args ...interface{}) (err error) {
+
+	val := reflect.ValueOf(reply).Elem()
+	typ := reflect.TypeOf(reply)
+
+	if typ.Kind() != reflect.Ptr {
+		err = fmt.Errorf("reply must be pointer, get %s %s", val.Kind(), val)
+		return
+	}
+	typ = typ.Elem()
+	fmt.Println(typ, val)
+
+	reply_args, err := c.Invoke(name, args...)
+	if err != nil || typ.NumField() != len(reply_args) {
+		return
+	}
+
+	for i := 0; i < typ.NumField(); i++ {
+
+		f := val.Field(i)
+		log.Print(reply_args)
+
+		if !f.CanSet() {
+			continue
+		}
+
+		r := reply_args[i]
+
+		switch f.Kind() {
+		case reflect.Int:
+			f.SetInt(r.(int64))
+		case reflect.String:
+			f.SetString(r.(string))
+		}
+	}
+	return
 }
 
 /*
@@ -155,7 +194,7 @@ and the args of the returned event are the exception description and traceback.
 The client sends heartbeat events every 5 seconds, if two heartbeat events are missed,
 the remote is considered as lost and an ErrLostRemote is returned.
 */
-func (c *Client) InvokeStream(name string, args ...interface{}) ([]*Event, error) {
+func (c *Client) InvokeStream(name string, args ...interface{}) ([][]interface{}, error) {
 	log.Printf("ZeroRPC client invoked %s with args %s in streaming mode", name, args)
 
 	ev, err := newEvent(name, args)
@@ -171,17 +210,19 @@ func (c *Client) InvokeStream(name string, args ...interface{}) ([]*Event, error
 		return nil, err
 	}
 
-	out := make([]*Event, 0)
+	out := make([][]interface{}, 0)
 
 	for {
 		select {
 		case response := <-ch.channelOutput:
 			if response.Name == "ERR" {
-				return []*Event{response}, fmt.Errorf("%s", response.Args)
+				out = append(out, response.Args)
+				return out, fmt.Errorf("%s", response.Args)
 			} else if response.Name == "OK" {
-				return []*Event{response}, nil
+				out = append(out, response.Args)
+				return out, nil
 			} else if response.Name == "STREAM" {
-				out = append(out, response)
+				out = append(out, response.Args)
 			} else {
 				return out, nil
 			}

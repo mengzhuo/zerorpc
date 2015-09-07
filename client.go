@@ -118,7 +118,6 @@ func (c *Client) InvokeReply(name string, reply interface{}, args ...interface{}
 		return
 	}
 	typ = typ.Elem()
-	fmt.Println(typ, val)
 
 	reply_args, err := c.Invoke(name, args...)
 	if err != nil || typ.NumField() != len(reply_args) {
@@ -128,7 +127,6 @@ func (c *Client) InvokeReply(name string, reply interface{}, args ...interface{}
 	for i := 0; i < typ.NumField(); i++ {
 
 		f := val.Field(i)
-		log.Print(reply_args)
 
 		if !f.CanSet() {
 			continue
